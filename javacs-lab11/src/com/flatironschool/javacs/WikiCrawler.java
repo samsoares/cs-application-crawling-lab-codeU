@@ -8,6 +8,8 @@ import java.util.Queue;
 
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import org.jsoup.nodes.Node;
+import org.jsoup.nodes.TextNode;
 
 import redis.clients.jedis.Jedis;
 
@@ -24,6 +26,8 @@ public class WikiCrawler {
 	
 	// fetcher used to get pages from Wikipedia
 	final static WikiFetcher wf = new WikiFetcher();
+	
+	private final static String WIKI_URL_PREFIX = "https://en.wikipedia.org"; 
 
 	/**
 	 * Constructor.
@@ -54,8 +58,29 @@ public class WikiCrawler {
 	 * @throws IOException
 	 */
 	public String crawl(boolean testing) throws IOException {
-        // FILL THIS IN!
-		return null;
+        if (queue.isEmpty()) {
+        	System.out.println("Queue is empty"); 
+        	return null; 
+        }
+        
+        String url = queue.poll(); 
+        System.out.println("Crawling " + url); 
+        
+        if (!testing && index.isIndexed(url)){
+        	System.out.println("Already indexed " + url); 
+        	return null; 
+        }
+        
+        Elements paragraphs; 
+        if (testing){
+        	paragraphs = wf.readWikipedia(url); 
+        } else {
+        	paragraphs = wf.fetchWikipedia(url); 
+        }
+        
+        index.indexPage(url, paragraphs); 
+        queueInternalLinks(paragraphs); 
+		return url;
 	}
 	
 	/**
@@ -65,7 +90,31 @@ public class WikiCrawler {
 	 */
 	// NOTE: absence of access level modifier means package-level
 	void queueInternalLinks(Elements paragraphs) {
-        // FILL THIS IN!
+        for (Element paragraph: paragraphs) {
+			processParagraph(paragraph);
+		}
+	}
+	
+	/**
+	 * Takes a collection of Elements and adds internal links to the queue.
+	 * 
+	 * @param paragraphs
+	 */
+	public void processParagraph(Element paragraph) {
+		Elements urlElements = paragraph.select("a[href]"); 
+		
+		for (Element urlElement : urlElements) {
+			String relUrl = urlElement.attr("href"); 
+			
+		//	if (relUrl.length() > 0){
+			//	System.out.println ("Considering: " + relUrl);
+		//	}
+			
+			if (relUrl.startsWith("/wiki/")) {
+				String absUrl = WIKI_URL_PREFIX + relUrl; 
+				queue.offer(absUrl); 
+			}
+		}
 	}
 
 	public static void main(String[] args) throws IOException {
@@ -84,9 +133,7 @@ public class WikiCrawler {
 		String res;
 		do {
 			res = wc.crawl(false);
-
-            // REMOVE THIS BREAK STATEMENT WHEN crawl() IS WORKING
-            break;
+			break;
 		} while (res == null);
 		
 		Map<String, Integer> map = index.getCounts("the");
